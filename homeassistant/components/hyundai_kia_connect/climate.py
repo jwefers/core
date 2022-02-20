@@ -71,6 +71,8 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
             name="Climate Control",
             unit_of_measurement=vehicle._air_temperature_unit,
         )
+        self._attr_unique_id = f"{DOMAIN}_{vehicle.id}_climate_control"
+        self._attr_name = f"{vehicle.name} Climate Control"
 
     @property
     def temperature_unit(self) -> str:
