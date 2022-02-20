@@ -27,11 +27,14 @@ async def async_setup_entry(
     config_entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up binary_sensor platform."""
+    """Set up switch platform."""
     coordinator = hass.data[DOMAIN][config_entry.unique_id]
+    entities: list[SwitchEntity] = []
     for vehicle_id in coordinator.vehicle_manager.vehicles.keys():
         vehicle: Vehicle = coordinator.vehicle_manager.vehicles[vehicle_id]
-        async_add_entities([HyundaiKiaChargeSwitch(coordinator, vehicle)])
+        entities.append(HyundaiKiaChargeSwitch(coordinator, vehicle))
+        entities.append(HyundaiKiaDoorsLockSwitch(coordinator, vehicle))
+    async_add_entities(entities)
 
 
 class HyundaiKiaChargeSwitch(HyundaiKiaConnectEntity, SwitchEntity):
@@ -45,7 +48,7 @@ class HyundaiKiaChargeSwitch(HyundaiKiaConnectEntity, SwitchEntity):
         coordinator: HyundaiKiaConnectDataUpdateCoordinator,
         vehicle: Vehicle,
     ) -> None:
-        """Initialize the Climate Control."""
+        """Initialize the Charge toggle."""
         super().__init__(coordinator, vehicle)
         self.entity_description = SwitchEntityDescription(
             icon="mdi:power-plug",
@@ -55,7 +58,6 @@ class HyundaiKiaChargeSwitch(HyundaiKiaConnectEntity, SwitchEntity):
         )
         self.vehicle_manager = coordinator.vehicle_manager
         self._attr_unique_id = f"{DOMAIN}_{vehicle.id}_charge"
-        self._attr_name = f"{vehicle.name} Charge Switch"
 
     @property
     def is_on(self) -> bool:
@@ -76,4 +78,44 @@ class HyundaiKiaChargeSwitch(HyundaiKiaConnectEntity, SwitchEntity):
             self.vehicle_manager.api.stop_charge(
                 self.vehicle_manager.token, self.vehicle
             )
+        )
+
+
+class HyundaiKiaDoorsLockSwitch(HyundaiKiaConnectEntity, SwitchEntity):
+    """Hyundai / Kia Connect Door Lock."""
+
+    vehicle_manager: VehicleManager
+    vehicle: Vehicle
+
+    def __init__(
+        self,
+        coordinator: HyundaiKiaConnectDataUpdateCoordinator,
+        vehicle: Vehicle,
+    ) -> None:
+        """Initialize the Car Lock Toggle."""
+        super().__init__(coordinator, vehicle)
+        self.entity_description = SwitchEntityDescription(
+            icon="mdi:car-door-lock",
+            device_class=SwitchDeviceClass.SWITCH,
+            key=f"{DOMAIN}_{vehicle.id}_door_lock",
+            name=f"{vehicle.name} Door Lock",
+        )
+        self.vehicle_manager = coordinator.vehicle_manager
+        self._attr_unique_id = f"{DOMAIN}_{vehicle.id}_door_lock"
+
+    @property
+    def is_on(self) -> bool:
+        """Is vehicle locked."""
+        return self.vehicle.is_locked
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Lock car."""
+        self.vehicle_manager.api.lock_action(
+            self.vehicle_manager.token, self.vehicle, "close"
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Unlock car."""
+        self.vehicle_manager.api.lock_action(
+            self.vehicle_manager.token, self.vehicle, "open"
         )

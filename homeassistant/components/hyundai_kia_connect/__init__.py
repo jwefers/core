@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .coordinator import HyundaiKiaConnectDataUpdateCoordinator
 
-PLATFORMS: list[str] = [Platform.BINARY_SENSOR, Platform.CLIMATE]
+PLATFORMS: list[str] = [Platform.BINARY_SENSOR, Platform.CLIMATE, Platform.SWITCH]
 
 
 async def async_setup_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
