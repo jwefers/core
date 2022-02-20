@@ -41,13 +41,7 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][config_entry.unique_id]
     for vehicle_id in coordinator.vehicle_manager.vehicles.keys():
         vehicle: Vehicle = coordinator.vehicle_manager.vehicles[vehicle_id]
-        async_add_entities(
-            [
-                HyundaiKiaCarClimateControlSwitch(
-                    coordinator, coordinator.vehicle_manager, vehicle
-                )
-            ]
-        )
+        async_add_entities([HyundaiKiaCarClimateControlSwitch(coordinator, vehicle)])
 
 
 class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
@@ -55,12 +49,14 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
 
     vehicle_manager: VehicleManager
     vehicle: Vehicle
+
+    # The python lib climate request is also treated as
+    # internal target state that can be sent to the car
     climate_config: ClimateRequestOptions = ClimateRequestOptions
 
     def __init__(
         self,
         coordinator: HyundaiKiaConnectDataUpdateCoordinator,
-        vehicle_manager: VehicleManager,
         vehicle: Vehicle,
     ) -> None:
         """Initialize the Climate Control."""
@@ -71,6 +67,7 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
             name="Climate Control",
             unit_of_measurement=vehicle._air_temperature_unit,
         )
+        self.vehicle_manager = coordinator.vehicle_manager
         self._attr_unique_id = f"{DOMAIN}_{vehicle.id}_climate_control"
         self._attr_name = f"{vehicle.name} Climate Control"
 
@@ -87,6 +84,7 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
     @property
     def target_temperature(self) -> float | None:
         """Get the desired in-car target temperature."""
+        # TODO: use Coordinator data, not internal state
         return self.climate_config.set_temp
 
     @property
@@ -96,6 +94,7 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
 
         There is no target temp window but this property is required for HVAC_MODE_HEAT_COOL
         """
+        # TODO: use Coordinator data, not internal state
         return self.climate_config.set_temp
 
     @property
@@ -105,6 +104,7 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
 
         There is no target temp window but this property is required for HVAC_MODE_HEAT_COOL
         """
+        # TODO: use Coordinator data, not internal state
         return self.climate_config.set_temp
 
     # TODO: unknown
@@ -128,6 +128,9 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
     @property
     def hvac_mode(self) -> str:
         """Get the configured climate control operation mode."""
+
+        # HVAC_MODE can be determined based on activation state of
+        # AC and Heater. TODO: use Coordinator data, not internal state
         state = [self.climate_config.climate, self.climate_config.heating]
 
         if state == [0, 0]:
@@ -143,6 +146,7 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
 
     @property
     def hvac_action(self) -> str | None:
+        # TODO: use Coordinator data, not internal state
         """
         Get what the in-car climate control is currently doing.
 
@@ -186,10 +190,15 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
     def hvac_modes(self) -> list[str]:
         """Supported in-car climate control modes."""
         return [
+            # TODO: how to determine from car state if AC system is turned on at all?
             HVAC_MODE_OFF,
+            # if both climate and heater are activated
             HVAC_MODE_HEAT_COOL,
+            # if only heater is activated
             HVAC_MODE_HEAT,
+            # if only AC is activated
             HVAC_MODE_COOL,
+            # if start_climate is called with both heater and AC off lol
             HVAC_MODE_FAN_ONLY,
         ]
 
@@ -201,7 +210,8 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode):
         """Set the operation mode of the in-car climate control."""
-        # set climate and heating activation according to HVAC MODE
+
+        # update climate and heating activation according to HVAC MODE
         [self.climate_config.climate, self.climate_config.heating] = {
             HVAC_MODE_HEAT_COOL: [1, 1],
             HVAC_MODE_COOL: [1, 0],
@@ -210,7 +220,7 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
             HVAC_MODE_OFF: [None, None],
         }[hvac_mode]
 
-        # turn on or off
+        # and send to car
         if hvac_mode is HVAC_MODE_OFF:
             await self.hass.async_add_executor_job(
                 self.vehicle_manager.api.stop_climate(
@@ -229,8 +239,8 @@ class HyundaiKiaCarClimateControlSwitch(HyundaiKiaConnectEntity, ClimateEntity):
         old_temp = self.climate_config.set_temp
         self.climate_config.set_temp = kwargs.get(ATTR_TEMPERATURE)
 
-        # activation is controlled separately, but it temp has changed,
-        # send it to the car
+        # activation is controlled separately, but if system is turned on
+        # and temp has changed, send update to car
         if (
             self.hvac_mode is not HVAC_MODE_OFF
             and old_temp != self.climate_config.set_temp
